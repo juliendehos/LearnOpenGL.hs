@@ -1,17 +1,9 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeApplications  #-}
-{-# LANGUAGE BlockArguments    #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE CPP  #-}
+
 module Main where
 
 import           Control.Monad
-import           Control.Monad.IO.Class (MonadIO(liftIO))
-import           Data.ByteString        (ByteString)
-import qualified Data.ByteString        as B
-import qualified Data.ByteString.Char8  as B8
-import           Data.List              (intercalate)
 import           Data.Vector.Storable   (Vector)
 import qualified Data.Vector.Storable   as V
 import           Foreign.C.String
@@ -25,7 +17,7 @@ import           System.Exit
 
 main :: IO ()
 main = do
-  init
+  _ <- init
   windowHint (WindowHint'ContextVersionMajor 3)
   windowHint (WindowHint'ContextVersionMinor 3)
   windowHint (WindowHint'OpenGLProfile OpenGLProfile'Core)
@@ -41,7 +33,7 @@ main = do
       printGLVersion
       setFramebufferSizeCallback window (Just frameBufferSizeCallback)
       shaderProgram <- makeShaderProgram
-      initBuffers $ \vaoPtr vboPtr ->
+      initBuffers $ \vaoPtr _vboPtr ->
         forever $ do
           shouldClose <- windowShouldClose window
           if shouldClose
@@ -59,11 +51,10 @@ proxySizeOf :: forall a p. Storable a => p a -> Int
 proxySizeOf _ = sizeOf (undefined :: a)
 
 printGLVersion :: IO ()
-printGLVersion =
-  putStrLn =<<
-    peekCString =<<
-      castPtr <$>
-        glGetString GL_VERSION
+printGLVersion
+  = glGetString GL_VERSION
+  >>= peekCString . castPtr
+  >>= putStrLn
 
 makeShaderProgram :: IO GLuint
 makeShaderProgram =
@@ -96,10 +87,7 @@ initBuffers f = do
     glBindVertexArray 0
     f vaoPtr vboPtr
 
-createShaderProgram
-  :: GLuint
-  -> GLuint
-  -> IO GLuint
+createShaderProgram :: GLuint -> GLuint -> IO GLuint
 createShaderProgram vertexShader fragmentShader = do
   shaderProgram <- glCreateProgram
   glAttachShader shaderProgram vertexShader
@@ -161,7 +149,7 @@ checkShaderCompilation shader = do
       glGetShaderiv shader GL_COMPILE_STATUS successPtr
       success <- peek successPtr
       glGetShaderInfoLog shader 512 nullPtr infoLogPtr
-      mapM_ print =<< lines <$> peekCString infoLogPtr
+      mapM_ print . lines =<< peekCString infoLogPtr
       when (success <= 0) $ do
         putStrLn "Failed to compile shader "
         exitFailure
@@ -170,17 +158,13 @@ checkShaderCompilation shader = do
 verts :: Vector Float
 verts =
   V.fromList $ concat
-  [ [-0.5, -0.5, 0.0 ]
-  , [ 0.5, -0.5, 0.0 ]
-  , [ 0.0,  0.5, 0.0 ]
-  ]
+    [ [-0.5, -0.5, 0.0 ]
+    , [ 0.5, -0.5, 0.0 ]
+    , [ 0.0,  0.5, 0.0 ]
+    ]
 
-render
-  :: GLuint
-  -> Ptr GLuint
-  -> Window
-  -> IO ()
-render shaderProgram vaoPtr window = do
+render :: GLuint -> Ptr GLuint -> Window -> IO ()
+render shaderProgram vaoPtr _window = do
   vao <- peek vaoPtr
   -- glPolygonMode GL_FRONT_AND_BACK GL_LINE
   glClearColor 0.2 0.3 0.3 1.0
@@ -189,21 +173,13 @@ render shaderProgram vaoPtr window = do
   glBindVertexArray vao
   glDrawArrays GL_TRIANGLES 0 3
 
-process
-  :: Window
-  -> IO ()
+process :: Window -> IO ()
 process window = do
   keyState <- getKey window Key'Escape
   case keyState of
     KeyState'Pressed -> setWindowShouldClose window True
     _ -> pure ()
 
-frameBufferSizeCallback
-  :: Window
-  -> Int
-  -> Int
-  -> IO ()
+frameBufferSizeCallback :: Window -> Int -> Int -> IO ()
 frameBufferSizeCallback _ x y =
-  glViewport 0 0
-    (fromIntegral x)
-    (fromIntegral y)
+  glViewport 0 0 (fromIntegral x) (fromIntegral y)
